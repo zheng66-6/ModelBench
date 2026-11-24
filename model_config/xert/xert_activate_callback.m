@@ -1,0 +1,16 @@
+%% Abstract: HDRT target activation callback.
+%% Author: qing@alumni.hust.edu.cn
+%%
+%% Triggered by xert.tlc (PostApplyCallback) whenever the target's
+%% configuration set is applied to a model. It simply forwards to
+%% modelconfig1() so a model switched to xert.tlc receives the fixed-step,
+%% speed-oriented defaults automatically.
+function xert_activate_callback(model)
+    % Apply the HDRT defaults (xert.tlc, fixed step, level2 optimization).
+    modelconfig1(model);
+	disp(['*** Activate callback triggered:', sprintf('\n'), ...
+        '  Current active configuration set for model ', ...
+        get_param(model, 'Name'), ' is ', ...
+        get(getActiveConfigSet(model), 'Name'), ...
+        '.  \nThe system target file is ', ...
+        get_param(getActiveConfigSet(model), 'SystemTargetFile')]);

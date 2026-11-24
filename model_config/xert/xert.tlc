@@ -1,0 +1,58 @@
+%% SYSTLC: eXtreme Real-time Target (xert) \
+%%    TMF: ert_default_tmf MAKE: make_rtw EXTMODE: ext_comm 
+%% SYSTLC: Create Visual C/C++ Solution File for Simulink Coder (xert) \
+%%    TMF: RTW.MSVCBuild MAKE: make_rtw EXTMODE: ext_comm
+
+%selectfile NULL_FILE
+
+%%----------------------------
+%% TLC Configuration Variables Section
+%%----------------------------
+%% Assign code format, language, target type.
+%%
+%assign CodeFormat = "Embedded-C"
+%assign TargetType = "RT"
+%assign Language   = "C"
+%%
+%%----------------------------
+%% TLC Program Entry Point
+%%----------------------------
+%% Call entry point function.
+%include "codegenentry.tlc"
+%%
+%%----------------------------
+%% (OPTIONAL) Generate Files for Build Process
+%%----------------------------
+%include "xert_main.tlc"
+%%----------------------------
+%% RTW_OPTIONS Section
+%%----------------------------
+/%
+  BEGIN_RTW_OPTIONS
+
+
+
+  %----------------------------------------%
+  % Configure code generation settings %
+  %----------------------------------------%
+  
+  rtwgensettings.BuildDirSuffix = '_xert_rtw';
+  rtwgensettings.Version = '1';
+
+  %
+  % NOTE: PostApplyCallback should be used to setup options outside of the    
+  %       configuration set of this target based on changes in the host       
+  %       configuration set options.  At the time when this callback is       
+  %       triggered, UI changes are already applied to the host configuration 
+  %       set and thus up-to-date.                                            
+  %
+  rtwgensettings.PostApplyCallback = ...
+    'xert_activate_callback(model)';
+  rtwgensettings.DerivedFrom = 'ert.tlc';
+  %
+  % NOTE: DerivedFrom declares the base target of this target. All the UI     
+  %       options and default settings are inherited.                         
+  %
+         ...
+  END_RTW_OPTIONS
+%/

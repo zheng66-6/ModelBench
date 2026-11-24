@@ -1,0 +1,127 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%    hdrt_interface.c
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+
+%openfile buffSrc = "xert_main.tmp"
+%assign currentTime = FEVAL("datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z')")
+%assign qbaseRate = ::CompiledModel.FixedStepOpts.FixedStep
+%assign qmodelName = ::CompiledModel.Name
+%assign qNumSampleTimes =::CompiledModel.NumSampleTimes
+%assign qNumSystems = ::CompiledModel.NumSubsystems
+%if ISFIELD(::CompiledModel, "NumTasks")
+    %assign qNumTasks = ::CompiledModel.NumTasks
+%else
+    %assign qNumTasks = -1
+%endif
+%assign qNumSignals = ::CompiledModel.NumBlockSignals
+%assign qNumParams = ::CompiledModel.NumBlockParams
+
+/**
+ * ============================================================================
+ *      Filename : xert_main.c
+ *
+ *    Description: 
+ *        Author : hdrt tool chain, count123@neu.edu.cn
+ *        Date              : %<TLC_TIME> (%<currentTime>)
+ *        stepSize          : %<qbaseRate>
+ *        modelName         : %<qmodelName>
+ *        NumSubsystems     : %<qNumSystems>
+ *        NumTasks          : %<qNumTasks>
+ *        NumSampleTimes    : %<qNumSampleTimes>
+ *        NumBlockSignals   : %<qNumSignals>
+ *        NumBlockParams    : %<qNumParams>
+ *
+ * ============================================================================
+ */
+#define _GNU_SOURCE
+#include <stdlib.h>
+#include <stdio.h>
+#include "%<qmodelName>.h"
+#include "rtwtypes.h"
+#include "limits.h"
+#include "framework/timeSample.h"
+#include "framework/taskIsolation.h"
+#include "framework/thread.h"
+
+
+int main(int argc, const char *argv[])
+{
+
+    int cpu = 3, iterations = 1000, evtId = 32;
+    if (argc == 4) {
+        cpu = atoi(argv[1]);
+        iterations = atoi(argv[2]);
+        evtId = atoi(argv[3]);
+    }
+  
+    /* Pin the process to the requested CPU and request SCHED_FIFO. */
+    EPCPU_BIND(cpu);
+    EPRT_FIFO();
+
+    /* Keep the whole address space resident to avoid page faults in the loop. */
+    lockMemory();
+
+    /*
+     * Output directory for the sample log.
+     * HDRT_SAMPLE_LOG_DIR always wins at run time.  The literal below is the
+     * default fallback and is rewritten by model_code_gen.py for each
+     * compiler/optimisation pair.
+     */
+    char *save_path = getenv("HDRT_SAMPLE_LOG_DIR");
+    if (save_path == NULL || save_path[0] == '\0') {
+        save_path = "/home/hdrt/projects/jitter_analysis/sample_log/%<qmodelName>/gcc/o2";
+    }
+
+    char *model_name = "%<qmodelName>";
+    int rtdLen = 64;
+    unsigned int ns_per_unit = %<qbaseRate> / (2*rtdLen);
+    int cpuModelId = get_cpu_model_id();
+    // Config the runtimeDistribution
+    runtimeDistribution_t *rtdd = rtdRegister(model_name, rtdLen, ns_per_unit, cpuModelId, evtId, iterations);
+
+    uint64_t ts = 0, te = 0, tdel = 0;
+    /* Initialization callback of the model. */
+    %<qmodelName>_initialize();
+
+    /* Let the CPU settle (governor / cache warm-up) before measuring. */
+    busy_loop(1);
+
+#if defined(TASK_ISOLATION)
+    /* Requires the task-isolation kernel patch; becomes a no-op otherwise. */
+    enableTaskIsolation();
+#endif
+
+    for (int ii=0; ii<iterations; ++ii) {
+#if defined(__arch_x86__) && defined(PMU_MONITOR)
+        /* Snapshot counters; deltas are computed at the second call below. */
+        pmu_record(&(rtdd->ps->pmu));
+#endif
+        ts = get_tsc();
+        /* One-step callback of the model. */
+        %<qmodelName>_step();
+
+        te = get_tsc();
+#if defined(__arch_x86__) && defined(PMU_MONITOR)
+        pmu_record(&(rtdd->ps->pmu));
+#endif
+        tdel = te - ts;
+        runtimeDistributionSampleOnce(rtdd, tdel, ii);
+        asm volatile("mfence" ::: "memory");
+    }
+#if defined(TASK_ISOLATION)
+    disableTaskIsolation();
+#endif
+    // Output the sample data
+    rtdPrint(rtdd, save_path);
+    // Termination callback of the model
+    %<qmodelName>_terminate();
+    
+    printf("\n*****************************\n");
+    printf("  Terminating the model %<qmodelName> (step size: %<qbaseRate>)");
+    printf("\n*****************************\n");
+    
+    return 0;
+}
+
+%closefile buffSrc
